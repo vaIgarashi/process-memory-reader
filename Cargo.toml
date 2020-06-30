@@ -1,0 +1,8 @@
+[package]
+name = "process-memory-reader"
+version = "0.1.0"
+authors = ["vagola <vladislavs.golubs@yandex.ru>"]
+edition = "2018"
+
+[dependencies]
+winapi = { version = "0.3", features = ["processthreadsapi", "psapi", "tlhelp32", "memoryapi", "handleapi"] }
