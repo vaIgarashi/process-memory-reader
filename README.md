@@ -1,4 +1,5 @@
 # process-memory-reader
+[![crates.io](https://img.shields.io/crates/v/process-memory-reader.svg)](https://crates.io/crates/process-memory-reader)
 
 API to read process memory using WinAPI.
 
