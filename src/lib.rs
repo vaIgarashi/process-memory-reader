@@ -189,7 +189,7 @@ impl Process {
             index += 1;
         }
 
-        Ok(String::from_utf8(buffer).unwrap())
+        Ok(String::from_utf8(buffer).unwrap_or(String::from("")))
     }
 
     pub fn read_u8(&self, address: u64) -> Result<u8, MemoryReadError> {
