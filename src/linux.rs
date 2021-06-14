@@ -82,6 +82,15 @@ impl Process for LinuxProcess {
             });
         }
 
+        let read = result as usize;
+
+        if read != buffer.len() {
+            return Err(MemoryReadError::LessBytesRead {
+                expected: buffer.len(),
+                actual: read,
+            });
+        }
+
         Ok(())
     }
 }
