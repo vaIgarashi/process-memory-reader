@@ -1,14 +1,17 @@
 [package]
 name = "process-memory-reader"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["vagola <vladislavs.golubs@yandex.ru>"]
 edition = "2018"
-description = "API to read process memory using WinAPI"
+description = "Crate for reading process memory"
 homepage = "https://github.com/vagola/process-memory-reader"
 repository = "https://github.com/vagola/process-memory-reader"
 keywords = ["memory", "winapi", "process"]
 readme = "README.md"
 license = "MIT"
 
-[dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["processthreadsapi", "psapi", "tlhelp32", "memoryapi", "handleapi"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
