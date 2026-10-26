@@ -20,6 +20,8 @@ pub mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
+pub mod scan;
+
 /// The kind of backing store of a committed memory region.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RegionKind {
