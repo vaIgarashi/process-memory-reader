@@ -1,4 +1,4 @@
-use crate::{MemoryReadError, Process};
+use crate::{MemoryReadError, Process, RegionInfo, RegionKind};
 use libc::{iovec, process_vm_readv};
 use std::fs::{read_dir, File};
 use std::io::{Error as IoError, BufReader, BufRead};
@@ -43,6 +43,33 @@ pub struct LinuxProcess {
     pub pid: u32,
 }
 
+/// One `process_vm_readv` call: `Some(bytes read)` on success, `None` on
+/// failure (including partial failures of a multi-iovec transfer). An empty
+/// buffer is trivially `Some(0)` without a syscall.
+fn read_remote(pid: u32, address: usize, buffer: &mut [u8]) -> Option<usize> {
+    if buffer.is_empty() {
+        return Some(0);
+    }
+
+    let local_iov = iovec {
+        iov_base: buffer.as_mut_ptr() as *mut _,
+        iov_len: buffer.len(),
+    };
+
+    let remote_iov = iovec {
+        iov_base: address as *mut _,
+        iov_len: buffer.len(),
+    };
+
+    let result = unsafe { process_vm_readv(pid as i32, &local_iov, 1, &remote_iov, 1, 0) };
+
+    if result == -1 {
+        return None;
+    }
+
+    Some(result as usize)
+}
+
 impl Process for LinuxProcess {
     fn base_address(&self, module_name: &str) -> Option<usize> {
         let file_name = format!("/proc/{}/maps", self.pid);
@@ -64,25 +91,8 @@ impl Process for LinuxProcess {
     }
 
     fn read_bytes(&self, address: usize, buffer: &mut [u8]) -> Result<(), MemoryReadError> {
-        let local_iov = iovec {
-            iov_base: buffer.as_mut_ptr() as *mut _,
-            iov_len: buffer.len(),
-        };
-
-        let remote_iov = iovec {
-            iov_base: address as *mut _,
-            iov_len: buffer.len(),
-        };
-
-        let result = unsafe { process_vm_readv(self.pid as i32, &local_iov, 1, &remote_iov, 1, 0) };
-
-        if result == -1 {
-            return Err(MemoryReadError::IOError {
-                io_error: IoError::last_os_error(),
-            });
-        }
-
-        let read = result as usize;
+        let read =
+            read_remote(self.pid, address, buffer).ok_or_else(|| IoError::last_os_error())?;
 
         if read != buffer.len() {
             return Err(MemoryReadError::LessBytesRead {
@@ -92,5 +102,99 @@ impl Process for LinuxProcess {
         }
 
         Ok(())
+    }
+
+    fn regions(&self) -> Vec<RegionInfo> {
+        let maps_path = format!("/proc/{}/maps", self.pid);
+        let file = match File::open(maps_path) {
+            Ok(file) => file,
+            Err(_) => return Vec::new(),
+        };
+
+        let reader = BufReader::new(file);
+        let mut regions = Vec::new();
+
+        for result in reader.lines() {
+            let line = match result {
+                Ok(line) => line,
+                Err(_) => break,
+            };
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let mut fields = trimmed.split_whitespace();
+            let range = match fields.next() {
+                Some(range) => range,
+                None => continue,
+            };
+
+            let mut range_parts = range.split('-');
+            let start = match range_parts.next().and_then(|s| usize::from_str_radix(s, 16).ok()) {
+                Some(start) => start,
+                None => continue,
+            };
+            let end = match range_parts.next().and_then(|s| usize::from_str_radix(s, 16).ok()) {
+                Some(end) => end,
+                None => continue,
+            };
+
+            if end <= start {
+                continue;
+            }
+
+            let perms = fields.next().unwrap_or("");
+            let pathname = fields.next_back().unwrap_or("");
+
+            let kind = if pathname.is_empty() || pathname.starts_with('[') {
+                RegionKind::Private
+            } else if perms.contains('x') {
+                RegionKind::Image
+            } else if pathname.starts_with('/') {
+                RegionKind::Mapped
+            } else {
+                RegionKind::Image
+            };
+
+            if start == 0 {
+                continue;
+            }
+
+            regions.push(RegionInfo {
+                base: start,
+                size: end - start,
+                kind,
+            });
+        }
+
+        regions
+    }
+
+    fn read_bytes_partial(&self, address: usize, buffer: &mut [u8]) -> usize {
+        if buffer.is_empty() {
+            return 0;
+        }
+
+        let mut read = match read_remote(self.pid, address, buffer) {
+            Some(read) => read,
+            None => return 0,
+        };
+
+        if read == 0 {
+            return 0;
+        }
+
+        while read < buffer.len() {
+            let chunk = match read_remote(self.pid, address + read, &mut buffer[read..]) {
+                Some(chunk) if chunk > 0 => chunk,
+                _ => break,
+            };
+
+            read += chunk;
+        }
+
+        read
     }
 }
