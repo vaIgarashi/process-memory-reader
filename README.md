@@ -33,6 +33,7 @@ for region in process.regions() {
 
 ```rust,no_run
 use process_memory_reader::{open_process, Process};
+
 let process = open_process(666).unwrap();
 
 let mut buffer = [0u8; 4096];
