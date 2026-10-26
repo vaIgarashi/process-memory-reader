@@ -1,6 +1,6 @@
 [package]
 name = "process-memory-reader"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["vagola <vladislavs.golubs@yandex.ru>"]
 edition = "2018"
 description = "Crate for reading process memory"
@@ -11,7 +11,7 @@ readme = "README.md"
 license = "MIT"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3", features = ["processthreadsapi", "psapi", "tlhelp32", "memoryapi", "handleapi"] }
+winapi = { version = "0.3", features = ["processthreadsapi", "psapi", "tlhelp32", "memoryapi", "handleapi", "winnt"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

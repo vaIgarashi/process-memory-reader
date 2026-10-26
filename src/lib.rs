@@ -20,6 +20,34 @@ pub mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
+/// The kind of backing store of a committed memory region.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RegionKind {
+    /// Anonymous private memory (heaps, stacks).
+    Private,
+    /// File-backed data mapping (`MEM_MAPPED` on Windows, a mapped regular
+    /// file on Linux).
+    Mapped,
+    /// Executable image mapping (`MEM_IMAGE` on Windows, the main
+    /// executable or a shared object on Linux).
+    Image,
+}
+
+/// One committed region of the target process address space.
+///
+/// Windows: one `VirtualQueryEx` entry with `State == MEM_COMMIT`;
+/// Linux: one `/proc/<pid>/maps` entry. Free and reserved address space is
+/// not reported; the null page is skipped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RegionInfo {
+    /// Region base address (page-aligned).
+    pub base: usize,
+    /// Region size in bytes (a multiple of the page size).
+    pub size: usize,
+    /// Backing-store kind.
+    pub kind: RegionKind,
+}
+
 use std::io::Error as IoError;
 
 /// Errors that can be caught when trying to read process memory.
@@ -54,13 +82,24 @@ pub trait Process {
     /// Read the specified length in bytes from the address memory.
     fn read_bytes(&self, address: usize, buffer: &mut [u8]) -> Result<(), MemoryReadError>;
 
+    /// Enumerate the committed regions of the process address space, in
+    /// ascending base order (never overlapping, page-aligned bases).
+    fn regions(&self) -> Vec<RegionInfo>;
+
+    /// Read the readable contiguous prefix of `buffer` starting at
+    /// `address`; returns how many bytes were actually read,
+    /// `0..=buffer.len()`. Unlike `read_bytes`, a partially unreadable span
+    /// is not an error: the caller keeps the readable prefix (`0` means
+    /// nothing at `address` was readable).
+    fn read_bytes_partial(&self, address: usize, buffer: &mut [u8]) -> usize;
+
     /// Read string until null char are read.
     fn read_string(&self, address: usize) -> Result<String, MemoryReadError> {
         let mut buffer = Vec::new();
         let mut index = 0;
 
         loop {
-            let ch = self.read_u8(address + index as usize)?;
+            let ch = self.read_u8(address + index)?;
 
             if ch == 0 {
                 break;
