@@ -78,6 +78,15 @@ pub struct WindowsProcess {
     handle: *mut c_void,
 }
 
+// SAFETY: the handle is a kernel object id, not tied to any thread, and the
+// WinAPI calls used with it (ReadProcessMemory, module enumeration) are
+// thread-safe; there is no other interior state. Send is what lets consumers
+// move the process to a dedicated reader thread; Sync additionally allows
+// shared reads, since every method takes &self and only performs syscalls.
+// Drop closes the handle exactly once, as with any owned value.
+unsafe impl Send for WindowsProcess {}
+unsafe impl Sync for WindowsProcess {}
+
 /// One `ReadProcessMemory` call: `Some(bytes read)` on success, `None` on
 /// failure. An empty buffer is trivially `Some(0)` without a syscall.
 fn read_once(handle: *mut c_void, address: usize, buffer: &mut [u8]) -> Option<usize> {
